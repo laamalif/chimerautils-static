@@ -1,0 +1,107 @@
+name: chimerautils-build
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Every 24 hours at 3AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.set-tag.outputs.tag }}
+      skip: ${{ steps.tag-check.outputs.skip }}
+    steps:
+      - name: Fetch latest tag from upstream
+        id: set-tag
+        run: |
+          latest=$(curl -s https://api.github.com/repos/chimera-linux/chimerautils/tags | jq -r '.[0].name')
+          echo "Latest tag from upstream: $latest"
+          echo "tag=$latest" >> $GITHUB_OUTPUT
+
+      - name: Check if tag was already built
+        id: tag-check
+        run: |
+          tag=${{ steps.set-tag.outputs.tag }}
+          echo "Checking if tag $tag already exists in releases..."
+          exists=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/$tag | jq -r '.tag_name')
+          if [[ "$exists" == "$tag" ]]; then
+            echo "✅ Release for tag $tag already exists. Exiting."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: check-version
+    if: needs.check-version.outputs.new_tag != '' && needs.check-version.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout static builder repo
+        uses: actions/checkout@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: all
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Run build script in Docker
+        run: |
+          mkdir -p artifacts
+          docker run --rm --privileged \
+            -v "$PWD:/src" \
+            -v "$PWD/artifacts:/src/artifacts" \
+            -w /src \
+            --platform linux/${{ matrix.arch }} \
+            debian:bookworm-slim \
+            bash build-chimerautils.sh ${{ matrix.arch }}
+
+      - name: Upload artifacts for ${{ matrix.arch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: chimerautils-${{ matrix.arch }}
+          path: |
+            artifacts/chimerautils-${{ matrix.arch }}.tar.gz
+            artifacts/chimerautils-${{ matrix.arch }}.sha256
+
+  release:
+    needs: [check-version, build]
+    runs-on: ubuntu-latest
+    if: needs.check-version.outputs.new_tag != '' && needs.check-version.outputs.skip != 'true'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+
+      - name: List all artifacts downloaded
+        run: ls -R downloaded-artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.check-version.outputs.new_tag }}
+          name: ${{ needs.check-version.outputs.new_tag }}
+          body: |
+            Automated static binary build of [chimera-linux/chimerautils](https://github.com/chimera-linux/chimerautils).
+
+            This release contains statically linked utilities for:
+            - amd64 (x86_64)
+            - arm64 (aarch64)
+
+            Based on upstream tag `${{ needs.check-version.outputs.new_tag }}`.
+          files: |
+           downloaded-artifacts/**/**.tar.gz
+           downloaded-artifacts/**/**.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+    

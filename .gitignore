@@ -1,0 +1,11 @@
+/build/
+/release/
+*.tar.gz
+*.sha256
+*.log
+*.log.*
+meson-logs/
+compile_commands.json
+.DS_Store
+*.swp
+*~
