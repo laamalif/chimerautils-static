@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 arch=$(uname -m)
-apt update && apt install -y libzstd-dev liblzma-dev libbz2-dev zlib1g-dev libacl1-dev libtinfo-dev libncurses-dev libbsd-dev pkg-config cmake byacc git build-essential clang lld autoconf libtool meson flex wget curl
+apt update && apt install -y lsb-release libzstd-dev liblzma-dev libbz2-dev zlib1g-dev libacl1-dev libtinfo-dev libncurses-dev libbsd-dev pkg-config cmake byacc git build-essential clang lld autoconf libtool meson flex wget curl
 
 export CC=clang
 export CXX=clang++
@@ -42,7 +42,7 @@ else
   cat <<EOF | tee /etc/apt/sources.list.d/debian-sources-debsrc.sources > /dev/null
 Types: deb-src
 URIs: http://deb.debian.org/debian
-Suites: bookworm
+Suites: trixie
 Components: main
 Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 EOF
