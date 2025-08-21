@@ -18,9 +18,9 @@ make -j$(nproc)
 make install
 cd
 
-curl -O https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.0.0.tar.gz
-tar -xf libressl-4.0.0.tar.gz
-cd libressl-4.0.0
+curl -O https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.1.0.tar.gz
+tar -xf libressl-4.1.0.tar.gz
+cd libressl-4.1.0
 ./configure --enable-static --disable-shared 
 make -j$(nproc)
 make install
