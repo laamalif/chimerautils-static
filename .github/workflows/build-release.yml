@@ -62,7 +62,7 @@ jobs:
             -v "$PWD/artifacts:/src/artifacts" \
             -w /src \
             --platform linux/${{ matrix.arch }} \
-            debian:bookworm-slim \
+            debian:trixie-slim \
             bash build-chimerautils.sh ${{ matrix.arch }}
 
       - name: Upload artifacts for ${{ matrix.arch }}
