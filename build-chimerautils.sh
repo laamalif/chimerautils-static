@@ -1,7 +1,12 @@
 #!/bin/bash
 set -e
+
 arch=$(uname -m)
-apt update && apt install -y lsb-release libzstd-dev liblzma-dev libbz2-dev zlib1g-dev libacl1-dev libtinfo-dev libncurses-dev libbsd-dev pkg-config cmake byacc git build-essential clang lld autoconf libtool meson flex wget curl
+
+apt update && apt install -y \
+  lsb-release libzstd-dev liblzma-dev libbz2-dev zlib1g-dev libacl1-dev \
+  libtinfo-dev libncurses-dev libbsd-dev pkg-config cmake byacc git \
+  build-essential clang lld autoconf libtool meson flex wget curl
 
 export CC=clang
 export CXX=clang++
@@ -9,6 +14,9 @@ export LD=ld.lld
 export CXXFLAGS="-std=c++17"
 export LDFLAGS="-ltinfo"
 
+# -------------------------------
+# Build libxo
+# -------------------------------
 git clone https://github.com/Juniper/libxo.git
 cd libxo
 sh bin/setup.sh
@@ -18,6 +26,9 @@ make -j$(nproc)
 make install
 cd
 
+# -------------------------------
+# Build LibreSSL
+# -------------------------------
 curl -O https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.1.0.tar.gz
 tar -xf libressl-4.1.0.tar.gz
 cd libressl-4.1.0
@@ -26,6 +37,9 @@ make -j$(nproc)
 make install
 cd
 
+# -------------------------------
+# Debian / Ubuntu deb-src fix
+# -------------------------------
 if grep -qi "ubuntu" /etc/os-release; then
   echo "🟡 Detected Ubuntu – enabling deb-src in classic format"
   release=$(lsb_release -cs)
@@ -39,16 +53,23 @@ if grep -qi "ubuntu" /etc/os-release; then
 
 else
   echo "🟢 Detected Debian – adding deb-src in deb822 format"
+
+  # IMPORTANT FIX: Use .pgp to match GitHub runner’s existing Signed-By
   cat <<EOF | tee /etc/apt/sources.list.d/debian-sources-debsrc.sources > /dev/null
 Types: deb-src
 URIs: http://deb.debian.org/debian
 Suites: trixie
 Components: main
-Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp
 EOF
+
 fi
 
 apt update
+
+# -------------------------------
+# Build libedit (static)
+# -------------------------------
 apt source libedit-dev
 cd libedit-3.1-*
 ./configure --enable-static --disable-shared
@@ -56,16 +77,23 @@ make -j$(nproc)
 make install
 cd
 
+# -------------------------------
+# Build chimerautils
+# -------------------------------
 git clone https://github.com/chimera-linux/chimerautils.git
 cd chimerautils
+
 version=$(git describe --tags --abbrev=0)
+
 rm -rf build && mkdir build && cd build
-#LDFLAGS="-ltinfo" meson .. --buildtype=release --default-library=static
 meson setup .. --buildtype=release --default-library=static
 ninja -j$(nproc)
 
-
 mkdir release
+
+# -------------------------------
+# Build each binary statically
+# -------------------------------
 
 clang -static -o release/find \
   src.freebsd/findutils/find/find.p/meson-generated_getdate.c.o \
@@ -82,7 +110,6 @@ clang -static -o release/find \
   -I/usr/local/libedit-static/include \
   -ledit -lacl -lz -lzstd -llzma -lbz2 -lcrypto -lssl -ltinfo -lncursesw -lxo -lm -static
 
-
 clang -static -o release/fetch \
   src.freebsd/fetch/fetch.p/fetch.c.o \
   src.freebsd/libfetch/liblibfetch.a \
@@ -90,7 +117,7 @@ clang -static -o release/fetch \
   /usr/local/lib/libssl.a \
   /usr/local/lib/libcrypto.a \
   -lresolv -lz -static
-  
+
 clang -static -o release/xargs \
   src.freebsd/findutils/xargs/xargs.p/strnsubst.c.o \
   src.freebsd/findutils/xargs/xargs.p/xargs.c.o \
@@ -105,7 +132,7 @@ clang -static -o release/grep \
   src.freebsd/compat/libcompat.a \
   src.freebsd/util/libutil_static.a \
   -static
-  
+
 clang -static -o release/jot \
   src.freebsd/jot/jot.p/jot.c.o \
   src.freebsd/compat/libcompat.a \
@@ -225,7 +252,7 @@ clang -static -o release/sed \
   src.freebsd/sed/sed.p/process.c.o \
   src.freebsd/compat/libcompat.a \
   -static
-  
+
 clang -static -o release/vis \
   src.freebsd/vis/vis.p/vis.c.o \
   src.freebsd/vis/vis.p/foldit.c.o \
@@ -242,6 +269,9 @@ echo "✅ Binaries built and stripped."
 
 mv release chimerautils
 
+# -------------------------------
+# Package output
+# -------------------------------
 output_dir=/src/artifacts
 mkdir -p "$output_dir"
 
@@ -252,7 +282,7 @@ case "$arch" in
 esac
 
 tar -czf "$output_dir/chimerautils-${output_arch}.tar.gz" chimerautils
+
 echo "📦 Archive ready: chimerautils-${output_arch}.tar.gz"
 echo "🔍 Generating SHA256 checksum..."
 sha256sum "$output_dir/chimerautils-${output_arch}.tar.gz" | tee "$output_dir/chimerautils-${output_arch}.sha256"
-
