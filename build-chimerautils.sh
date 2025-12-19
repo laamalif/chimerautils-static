@@ -29,9 +29,9 @@ cd
 # -------------------------------
 # Build LibreSSL
 # -------------------------------
-curl -O https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.1.0.tar.gz
-tar -xf libressl-4.1.0.tar.gz
-cd libressl-4.1.0
+curl -O https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.2.1.tar.gz
+tar -xf libressl-4.2.1.tar.gz
+cd libressl-4.2.1
 ./configure --enable-static --disable-shared 
 make -j$(nproc)
 make install
@@ -108,7 +108,14 @@ clang -static -o release/find \
   src.freebsd/util/libutil_static.a \
   -L/usr/local/libedit-static/lib \
   -I/usr/local/libedit-static/include \
-  -ledit -lacl -lz -lzstd -llzma -lbz2 -lcrypto -lssl -ltinfo -lncursesw -lxo -lm -static
+  -ledit \
+  -lxo \
+  -lncursesw -ltinfo \
+  -lssl -lcrypto \
+  -lacl \
+  -lz -lzstd -llzma -lbz2 \
+  -lm \
+  -static
 
 clang -static -o release/fetch \
   src.freebsd/fetch/fetch.p/fetch.c.o \
