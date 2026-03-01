@@ -86,6 +86,7 @@ cd chimerautils
 version=$(git describe --tags --abbrev=0)
 
 rm -rf build && mkdir build && cd build
+export LDFLAGS="${LDFLAGS:+$LDFLAGS }-ltinfo"
 meson setup .. --buildtype=release --default-library=static
 ninja -j$(nproc)
 
