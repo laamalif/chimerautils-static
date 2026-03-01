@@ -1,18 +1,35 @@
-#!/bin/bash
+!/bin/bash
 set -e
 
 arch=$(uname -m)
+script_root=$(pwd)
+toolchain="${TOOLCHAIN:-clang}"
 
 apt update && apt install -y \
   lsb-release libzstd-dev liblzma-dev libbz2-dev zlib1g-dev libacl1-dev \
   libtinfo-dev libncurses-dev libbsd-dev pkg-config cmake byacc git \
   build-essential clang lld autoconf libtool meson flex wget curl
 
-export CC=clang
-export CXX=clang++
-export LD=ld.lld
+case "$toolchain" in
+  clang)
+    export CC=clang
+    export CXX=clang++
+    if command -v ld.lld >/dev/null 2>&1; then
+      export LD=ld.lld
+    fi
+    ;;
+  gcc)
+    export CC=gcc
+    export CXX=g++
+    unset LD
+    ;;
+  *)
+    echo "ERROR: TOOLCHAIN must be 'clang' or 'gcc' (got: $toolchain)" >&2
+    exit 1
+    ;;
+esac
+
 export CXXFLAGS="-std=c++17"
-export LDFLAGS="-ltinfo"
 
 # -------------------------------
 # Build libxo
@@ -22,26 +39,28 @@ cd libxo
 sh bin/setup.sh
 cd build
 ../configure --enable-static --disable-shared
-make -j$(nproc)
+make -j"$(nproc)"
 make install
-cd
+cd "$script_root"
 
 # -------------------------------
 # Build LibreSSL
 # -------------------------------
-curl -O https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.2.1.tar.gz
-tar -xf libressl-4.2.1.tar.gz
+git clone https://github.com/libressl/portable.git libressl-4.2.1
 cd libressl-4.2.1
-./configure --enable-static --disable-shared 
-make -j$(nproc)
+git checkout v4.2.1
+# update.sh inside autogen.sh needs OPENBSD_7_8 context for v4.2.1 patches
+LIBRESSL_GIT_OPTIONS="${LIBRESSL_GIT_OPTIONS:---depth=1 --branch OPENBSD_7_8}" ./autogen.sh
+./configure --enable-static --disable-shared
+make -j"$(nproc)"
 make install
-cd
+cd "$script_root"
 
 # -------------------------------
 # Debian / Ubuntu deb-src fix
 # -------------------------------
 if grep -qi "ubuntu" /etc/os-release; then
-  echo "🟡 Detected Ubuntu – enabling deb-src in classic format"
+  echo "Detected Ubuntu - enabling deb-src in classic format"
   release=$(lsb_release -cs)
 
   for line in \
@@ -50,19 +69,18 @@ if grep -qi "ubuntu" /etc/os-release; then
   do
     grep -qxF "$line" /etc/apt/sources.list || echo "$line" >> /etc/apt/sources.list
   done
-
 else
-  echo "🟢 Detected Debian – adding deb-src in deb822 format"
-
-  # IMPORTANT FIX: Use .pgp to match GitHub runner’s existing Signed-By
+  echo "Detected Debian - adding deb-src in deb822 format"
+  # shellcheck disable=SC1091
+  source /etc/os-release
+  debian_suite="${VERSION_CODENAME:-trixie}"
   cat <<EOF | tee /etc/apt/sources.list.d/debian-sources-debsrc.sources > /dev/null
 Types: deb-src
 URIs: http://deb.debian.org/debian
-Suites: trixie
+Suites: ${debian_suite}
 Components: main
 Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp
 EOF
-
 fi
 
 apt update
@@ -73,9 +91,9 @@ apt update
 apt source libedit-dev
 cd libedit-3.1-*
 ./configure --enable-static --disable-shared
-make -j$(nproc)
+make -j"$(nproc)"
 make install
-cd
+cd "$script_root"
 
 # -------------------------------
 # Build chimerautils
@@ -83,12 +101,18 @@ cd
 git clone https://github.com/chimera-linux/chimerautils.git
 cd chimerautils
 
-version=$(git describe --tags --abbrev=0)
+if [ -n "${CHIMERAUTILS_REF:-}" ]; then
+  git fetch --tags --force
+  git checkout "${CHIMERAUTILS_REF}"
+fi
+
+version=$(git describe --tags --abbrev=0 || true)
+echo "Building chimerautils version: ${version:-unknown}"
 
 rm -rf build && mkdir build && cd build
 export LDFLAGS="${LDFLAGS:+$LDFLAGS }-ltinfo"
 meson setup .. --buildtype=release --default-library=static
-ninja -j$(nproc)
+ninja -j"$(nproc)"
 
 mkdir release
 
@@ -105,6 +129,7 @@ clang -static -o release/find \
   src.freebsd/findutils/find/find.p/misc.c.o \
   src.freebsd/findutils/find/find.p/operator.c.o \
   src.freebsd/findutils/find/find.p/option.c.o \
+  src.freebsd/findutils/find/find.p/printf.c.o \
   src.freebsd/compat/libcompat.a \
   src.freebsd/util/libutil_static.a \
   -L/usr/local/libedit-static/lib \
@@ -273,7 +298,7 @@ clang -static -o release/unvis \
   -static
 
 strip release/*
-echo "✅ Binaries built and stripped."
+echo "Binaries built and stripped."
 
 mv release chimerautils
 
@@ -291,6 +316,6 @@ esac
 
 tar -czf "$output_dir/chimerautils-${output_arch}.tar.gz" chimerautils
 
-echo "📦 Archive ready: chimerautils-${output_arch}.tar.gz"
-echo "🔍 Generating SHA256 checksum..."
+echo "Archive ready: chimerautils-${output_arch}.tar.gz"
+echo "Generating SHA256 checksum..."
 sha256sum "$output_dir/chimerautils-${output_arch}.tar.gz" | tee "$output_dir/chimerautils-${output_arch}.sha256"
