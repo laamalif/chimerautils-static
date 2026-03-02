@@ -51,7 +51,7 @@ cd libressl-4.2.1
 git checkout v4.2.1
 # update.sh inside autogen.sh needs OPENBSD_7_8 context for v4.2.1 patches
 LIBRESSL_GIT_OPTIONS="${LIBRESSL_GIT_OPTIONS:---depth=1 --branch OPENBSD_7_8}" ./autogen.sh
-./configure --enable-static --disable-shared
+./configure --enable-static --disable-shared --with-openssldir=/etc/ssl
 make -j"$(nproc)"
 make install
 cd "$script_root"
