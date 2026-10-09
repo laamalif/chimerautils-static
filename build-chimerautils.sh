@@ -1,33 +1,25 @@
-!/bin/bash
+#!/bin/bash
 set -e
 
 arch=$(uname -m)
 script_root=$(pwd)
 toolchain="${TOOLCHAIN:-clang}"
 
+if [ "$toolchain" != "clang" ]; then
+  echo "ERROR: this build script is clang-only. Unset TOOLCHAIN or set TOOLCHAIN=clang (got: $toolchain)" >&2
+  exit 1
+fi
+
+export CC=clang
+export CXX=clang++
+if command -v ld.lld >/dev/null 2>&1; then
+  export LD=ld.lld
+fi
+
 apt update && apt install -y \
   lsb-release libzstd-dev liblzma-dev libbz2-dev zlib1g-dev libacl1-dev \
   libtinfo-dev libncurses-dev libbsd-dev pkg-config cmake byacc git \
   build-essential clang lld autoconf libtool meson flex wget curl
-
-case "$toolchain" in
-  clang)
-    export CC=clang
-    export CXX=clang++
-    if command -v ld.lld >/dev/null 2>&1; then
-      export LD=ld.lld
-    fi
-    ;;
-  gcc)
-    export CC=gcc
-    export CXX=g++
-    unset LD
-    ;;
-  *)
-    echo "ERROR: TOOLCHAIN must be 'clang' or 'gcc' (got: $toolchain)" >&2
-    exit 1
-    ;;
-esac
 
 export CXXFLAGS="-std=c++17"
 
@@ -46,11 +38,11 @@ cd "$script_root"
 # -------------------------------
 # Build LibreSSL
 # -------------------------------
-git clone https://github.com/libressl/portable.git libressl-4.2.1
-cd libressl-4.2.1
-git checkout v4.2.1
-# update.sh inside autogen.sh needs OPENBSD_7_8 context for v4.2.1 patches
-LIBRESSL_GIT_OPTIONS="${LIBRESSL_GIT_OPTIONS:---depth=1 --branch OPENBSD_7_8}" ./autogen.sh
+git clone https://github.com/libressl/portable.git libressl-4.3.3
+cd libressl-4.3.3
+git checkout v4.3.3
+# update.sh inside autogen.sh needs OPENBSD_7_9 context for v4.3.2 patches
+LIBRESSL_GIT_OPTIONS="${LIBRESSL_GIT_OPTIONS:---depth=1 --branch OPENBSD_7_9}" ./autogen.sh
 ./configure --enable-static --disable-shared --with-openssldir=/etc/ssl
 make -j"$(nproc)"
 make install
